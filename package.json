@@ -17,7 +17,9 @@
   },
   "homepage": "https://github.com/BonatheRipper/facebook_post_auto_reply#readme",
   "dependencies": {
+    "fix-esm": "^1.0.1",
     "nodemon": "^3.1.0",
-    "puppeteer": "^22.6.5"
+    "puppeteer": "^22.6.5",
+    "puppeteer-autoscroll-down": "^2.0.0"
   }
 }
