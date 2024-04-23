@@ -1,10 +1,21 @@
 require("fix-esm").register();
 const puppeteer = require("puppeteer");
+const { KnownDevices } = require("puppeteer");
 const fs = require("fs");
 const config = require("./config.json");
 const cookies = require("./cookies.json");
 const { currentLinks, homePage, LoginPage } = require("./links.js");
-const { scrollPageToBottom } = require("puppeteer-autoscroll-down");
+const {
+  commentsSorter,
+  prevCommentLoop,
+  searchAndClickBackBtn,
+} = require("./utils.js");
+
+const mobileDevice = KnownDevices["iPhone 13 Pro Max"];
+const {
+  scrollPageToBottom,
+  scrollPageToTop,
+} = require("puppeteer-autoscroll-down");
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 const toLink = async (page, link) => {
   await page.goto(link, {
@@ -12,34 +23,126 @@ const toLink = async (page, link) => {
   });
 };
 // Function to scroll to the bottom of the page
-const scrollToBottomOfPage = async (page) => {
-  await scrollPageToBottom(page, {
-    size: 500,
-    delay: 250,
+const pageScrollSpeed = {
+  size: 500,
+  delay: 250,
+};
+
+const openAllComments = async (page, tagName, searchText) => {
+  // Sort comments
+  await commentsSorter(page, "Newest");
+  await sleep(10000);
+
+  // Call the previous CommentLoop function
+  await prevCommentLoop(
+    page,
+    tagName,
+    searchText,
+    scrollPageToBottom,
+    scrollPageToTop,
+    pageScrollSpeed,
+    sleep
+  );
+};
+const closeSpanWithAttribute = async (page) => {
+  await page.evaluate(() => {
+    // Find all <p> elements
+    const paragraphs = document.querySelectorAll("p");
+
+    // Loop through each <p> element
+    paragraphs.forEach((paragraph) => {
+      // Find all <span> elements inside the current <p> element
+      const spans = paragraph.querySelectorAll("span");
+
+      // Loop through each <span> element
+      spans.forEach((span) => {
+        // Check if the <span> element has the attribute data-lexical-text="true"
+        if (span.getAttribute("data-lexical-text") === "true") {
+          // Close the <span> element
+          // span.click();
+          console.log(span);
+        }
+      });
+    });
   });
 };
 
-const clickElementWithText = async (page, tagName, searchText) => {
-  const matchedTexts = await page.evaluate(
-    (tagName, searchText) => {
-      const matchedTexts = [];
+const clickReplyBtns = async (page, tagName, searchText) => {
+  const totalCommentsArr = await page.evaluate(
+    async (tagName, searchText) => {
+      const comments = [];
+      const paragraphs = document.querySelectorAll("p");
       const elements = document.querySelectorAll(tagName);
-      elements.forEach((element) => {
-        if (element.innerText == searchText) {
-          element.click();
-          matchedTexts.push(searchText);
+      const searchAndClickBackBtn = async () => {
+        let matchFound = false; // Flag to track if a match is found
+
+        // Continue looping until a match is found
+        while (!matchFound) {
+          // Select all <span> elements
+          console.log("  // Continue looping until a match is found");
+          const spans = document.querySelectorAll("span");
+
+          // Loop through each <span> element
+          spans.forEach((span) => {
+            // Check if the text content of the span is "󰟙"
+            if (span.textContent.trim() == "󰟙") {
+              // Log the span to the console
+              span.click();
+              matchFound = true; // Set the flag to true to exit the loop
+            }
+          });
+
+          // Wait for a brief moment before checking again (adjust this delay if needed)
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
-      });
-      return matchedTexts;
+      };
+      try {
+        if (elements && elements.length) {
+          for (const element of elements) {
+            if (element.innerText.trim() == searchText) {
+              // element.click();
+              comments.push(element);
+            }
+
+            // await new Promise((resolve) => setTimeout(resolve, 10)); // Wait for x seconds
+          }
+        } else {
+          throw new Error("Could not find elements with tag: " + searchText);
+        }
+        try {
+          if (comments && comments.length) {
+            comments[2].click();
+            try {
+              await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait for x seconds
+              let textArea = document.querySelector("textarea");
+              if (textArea && textArea.value.length > 0) {
+                textArea.value = "  Hello how are You today";
+                await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait for x seconds
+                await searchAndClickBackBtn();
+              } else {
+                throw new Error("textArea Yet to open or does not exist");
+              }
+            } catch (e) {
+              console.log(e.message);
+            }
+          } else {
+            throw new Error("Comment array has not length or does not exist ");
+          }
+        } catch (e) {
+          console.log(e.message);
+        }
+        console.log(comments);
+      } catch (error) {
+        console.log(error.message);
+      }
+
+      return comments;
     },
     tagName,
     searchText
   );
 
-  if (matchedTexts.length > 0) {
-    await sleep(1000);
-    await scrollToBottomOfPage(page);
-  }
+  console.log(totalCommentsArr.length);
 };
 
 // Defining a function to scroll to the bottom of the page
@@ -48,7 +151,7 @@ const Start = async () => {
   // Launch the browser and open a new blank page
   const browser = await puppeteer.launch({
     headless: false,
-    defaultViewport: null,
+    // defaultViewport: null,
   });
   const page = await browser.newPage();
 
@@ -60,13 +163,16 @@ const Start = async () => {
 
     // await toLink(page, homePage);
     // await sleep(2000);
+    //emulate mobileDevice
+    await page.emulate(mobileDevice);
     await toLink(page, currentLinks[0]);
-    await scrollToBottomOfPage(page); // Call the function here
 
     await sleep(5000);
-    await clickElementWithText(page, "span", "View more comments");
+    await openAllComments(page, "span", "Show previous comments");
 
-    await sleep(120000);
+    await sleep(5000);
+    clickReplyBtns(page, "span", "Reply");
+    await sleep(400000);
 
     await browser.close();
   } else {
@@ -107,4 +213,3 @@ const Start = async () => {
   debugger;
 };
 Start();
-// console.log(currentLinks[0]);
